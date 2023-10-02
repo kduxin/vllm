@@ -1,6 +1,8 @@
 """Sequence and its related classes."""
 import copy
 import enum
+import numpy as np
+import torch
 from typing import Dict, List, Optional, Union
 
 from vllm.block import LogicalTokenBlock
@@ -155,7 +157,10 @@ class Sequence:
         token_id: int,
         logprobs: Dict[int, float],
     ) -> None:
-        assert token_id in logprobs
+        if isinstance(logprobs, torch.Tensor) or isinstance(logprobs, np.ndarray):
+            pass
+        else:
+            assert token_id in logprobs
         self._append_tokens_to_blocks([token_id])
         self.output_logprobs.append(logprobs)
         self.data.append_token_id(token_id, logprobs[token_id])
@@ -362,9 +367,13 @@ class SequenceOutputs:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, SequenceOutputs):
             raise NotImplementedError()
+        if isinstance(self.logprobs, torch.Tensor) or isinstance(self.logprobs, np.ndarray):
+            logprobs_are_equal = (self.logprobs == other).all()
+        else:
+            logprobs_are_equal = (self.logprobs == other)
         return (self.parent_seq_id == other.parent_seq_id
                 and self.output_token == other.output_token
-                and self.logprobs == other.logprobs)
+                and logprobs_are_equal)
 
 
 # For each sequence group, we generate a list of SequenceOutputs object,

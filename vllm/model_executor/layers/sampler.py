@@ -273,18 +273,21 @@ def _get_topk_logprobs(
     if num_logprobs is None or num_logprobs == 0:
         return [{} for _ in range(num_seqs)]
 
-    all_topk_logprobs, all_topk_ids = torch.topk(logprobs,
-                                                 num_logprobs,
-                                                 dim=-1)
-    all_topk_logprobs = all_topk_logprobs.cpu()
-    all_topk_ids = all_topk_ids.cpu()
-    all_token_to_logprob = []
-    for topk_logprobs, topk_ids in zip(all_topk_logprobs, all_topk_ids):
-        token_to_logprob: Dict[int, float] = {}
-        for token_id, logprob in zip(topk_ids, topk_logprobs):
-            token_to_logprob[token_id.item()] = logprob.item()
-        all_token_to_logprob.append(token_to_logprob)
-    return all_token_to_logprob
+    if num_logprobs == logprobs.shape[-1]:
+        return logprobs
+    else:
+        all_topk_logprobs, all_topk_ids = torch.topk(logprobs,
+                                                     num_logprobs,
+                                                     dim=-1)
+        all_topk_logprobs = all_topk_logprobs.cpu()
+        all_topk_ids = all_topk_ids.cpu()
+        all_token_to_logprob = []
+        for topk_logprobs, topk_ids in zip(all_topk_logprobs, all_topk_ids):
+            token_to_logprob: Dict[int, float] = {}
+            for token_id, logprob in zip(topk_ids, topk_logprobs):
+                token_to_logprob[token_id.item()] = logprob.item()
+            all_token_to_logprob.append(token_to_logprob)
+        return all_token_to_logprob
 
 
 def _build_sequence_outputs(
@@ -300,7 +303,16 @@ def _build_sequence_outputs(
     seq_outputs: List[SequenceOutputs] = []
     for parent_id, next_token_id, token_logprob in zip(
             parent_ids, next_token_ids, selected_token_logprobs):
-        output_logprobs = next_logprobs[parent_id].copy()
+        next_logprobs_atp = next_logprobs[parent_id]
+        if isinstance(next_logprobs_atp, dict):
+            output_logprobs = next_logprobs_atp.copy()
+        elif isinstance(next_logprobs_atp, torch.Tensor):
+            output_logprobs = next_logprobs_atp.clone().cpu().numpy()
+        else:
+            raise ValueError(
+                f"Unsupported type for next_logprobs at {parent_id}: {type(next_logprobs_atp)}"
+            )
+
         output_logprobs[next_token_id] = token_logprob
         seq_outputs.append(
             SequenceOutputs(parent_seq_ids[parent_id], next_token_id,
