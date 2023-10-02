@@ -1,0 +1,105 @@
+diff -ruN vllm/engine/llm_engine.py /home/duxin/.pyenv/versions/llm/lib/python3.8/site-packages/vllm/engine/llm_engine.py
+--- vllm/engine/llm_engine.py	2023-10-02 09:45:03.203649399 +0900
++++ /home/duxin/.pyenv/versions/llm/lib/python3.8/site-packages/vllm/engine/llm_engine.py	2023-10-02 10:21:15.719749896 +0900
+@@ -1,7 +1,5 @@
+ import copy
+ import time
+-import numpy as np
+-import torch
+ from functools import partial
+ from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Tuple, Union
+ 
+diff -ruN vllm/model_executor/layers/sampler.py /home/duxin/.pyenv/versions/llm/lib/python3.8/site-packages/vllm/model_executor/layers/sampler.py
+--- vllm/model_executor/layers/sampler.py	2023-10-02 09:44:33.863648042 +0900
++++ /home/duxin/.pyenv/versions/llm/lib/python3.8/site-packages/vllm/model_executor/layers/sampler.py	2023-10-02 10:21:15.739749896 +0900
+@@ -273,21 +273,18 @@
+     if num_logprobs is None or num_logprobs == 0:
+         return [{} for _ in range(num_seqs)]
+ 
+-    if num_logprobs == logprobs.shape[-1]:
+-        return logprobs
+-    else:
+-        all_topk_logprobs, all_topk_ids = torch.topk(logprobs,
+-                                                     num_logprobs,
+-                                                     dim=-1)
+-        all_topk_logprobs = all_topk_logprobs.cpu()
+-        all_topk_ids = all_topk_ids.cpu()
+-        all_token_to_logprob = []
+-        for topk_logprobs, topk_ids in zip(all_topk_logprobs, all_topk_ids):
+-            token_to_logprob: Dict[int, float] = {}
+-            for token_id, logprob in zip(topk_ids, topk_logprobs):
+-                token_to_logprob[token_id.item()] = logprob.item()
+-            all_token_to_logprob.append(token_to_logprob)
+-        return all_token_to_logprob
++    all_topk_logprobs, all_topk_ids = torch.topk(logprobs,
++                                                 num_logprobs,
++                                                 dim=-1)
++    all_topk_logprobs = all_topk_logprobs.cpu()
++    all_topk_ids = all_topk_ids.cpu()
++    all_token_to_logprob = []
++    for topk_logprobs, topk_ids in zip(all_topk_logprobs, all_topk_ids):
++        token_to_logprob: Dict[int, float] = {}
++        for token_id, logprob in zip(topk_ids, topk_logprobs):
++            token_to_logprob[token_id.item()] = logprob.item()
++        all_token_to_logprob.append(token_to_logprob)
++    return all_token_to_logprob
+ 
+ 
+ def _build_sequence_outputs(
+@@ -303,16 +300,7 @@
+     seq_outputs: List[SequenceOutputs] = []
+     for parent_id, next_token_id, token_logprob in zip(
+             parent_ids, next_token_ids, selected_token_logprobs):
+-        next_logprobs_atp = next_logprobs[parent_id]
+-        if isinstance(next_logprobs_atp, dict):
+-            output_logprobs = next_logprobs_atp.copy()
+-        elif isinstance(next_logprobs_atp, torch.Tensor):
+-            output_logprobs = next_logprobs_atp.clone().cpu().numpy()
+-        else:
+-            raise ValueError(
+-                f"Unsupported type for next_logprobs at {parent_id}: {type(next_logprobs_atp)}"
+-            )
+-
++        output_logprobs = next_logprobs[parent_id].copy()
+         output_logprobs[next_token_id] = token_logprob
+         seq_outputs.append(
+             SequenceOutputs(parent_seq_ids[parent_id], next_token_id,
+diff -ruN vllm/sequence.py /home/duxin/.pyenv/versions/llm/lib/python3.8/site-packages/vllm/sequence.py
+--- vllm/sequence.py	2023-10-02 10:18:54.791743376 +0900
++++ /home/duxin/.pyenv/versions/llm/lib/python3.8/site-packages/vllm/sequence.py	2023-10-02 10:21:15.711749895 +0900
+@@ -1,8 +1,6 @@
+ """Sequence and its related classes."""
+ import copy
+ import enum
+-import numpy as np
+-import torch
+ from typing import Dict, List, Optional, Union
+ 
+ from vllm.block import LogicalTokenBlock
+@@ -157,10 +155,7 @@
+         token_id: int,
+         logprobs: Dict[int, float],
+     ) -> None:
+-        if isinstance(logprobs, torch.Tensor) or isinstance(logprobs, np.ndarray):
+-            pass
+-        else:
+-            assert token_id in logprobs
++        assert token_id in logprobs
+         self._append_tokens_to_blocks([token_id])
+         self.output_logprobs.append(logprobs)
+         self.data.append_token_id(token_id, logprobs[token_id])
+@@ -367,13 +362,9 @@
+     def __eq__(self, other: object) -> bool:
+         if not isinstance(other, SequenceOutputs):
+             raise NotImplementedError()
+-        if isinstance(self.logprobs, torch.Tensor) or isinstance(self.logprobs, np.ndarray):
+-            logprobs_are_equal = (self.logprobs == other.logprobs).all()
+-        else:
+-            logprobs_are_equal = (self.logprobs == other.logprobs)
+         return (self.parent_seq_id == other.parent_seq_id
+                 and self.output_token == other.output_token
+-                and logprobs_are_equal)
++                and self.logprobs == other.logprobs)
+ 
+ 
+ # For each sequence group, we generate a list of SequenceOutputs object,
