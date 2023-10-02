@@ -368,9 +368,9 @@ class SequenceOutputs:
         if not isinstance(other, SequenceOutputs):
             raise NotImplementedError()
         if isinstance(self.logprobs, torch.Tensor) or isinstance(self.logprobs, np.ndarray):
-            logprobs_are_equal = (self.logprobs == other).all()
+            logprobs_are_equal = (self.logprobs == other.logprobs).all()
         else:
-            logprobs_are_equal = (self.logprobs == other)
+            logprobs_are_equal = (self.logprobs == other.logprobs)
         return (self.parent_seq_id == other.parent_seq_id
                 and self.output_token == other.output_token
                 and logprobs_are_equal)
